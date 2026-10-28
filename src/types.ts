@@ -19,6 +19,9 @@ export interface RoundInfo {
   /** score before this round started */
   scoreT: number;
   scoreCT: number;
+  /** clan names of the teams playing T / CT this round (empty if unknown) */
+  nameT?: string;
+  nameCT?: string;
   plantTick?: number;
   bombX?: number;
   bombY?: number;

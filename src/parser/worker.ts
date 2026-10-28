@@ -4,12 +4,15 @@ import {
   EVENT_NAMES,
   EVENT_OTHER_PROPS,
   EVENT_PLAYER_PROPS,
+  TEAM_NAME_PROPS,
   TICK_PROP_SETS,
+  TICK_RATE,
   assemble,
   buildFrames,
   computeKills,
   computeRange,
   computeRounds,
+  computeTeamNames,
   computeUtils,
   makeSampleTicks,
   num,
@@ -328,7 +331,14 @@ self.onmessage = async (ev: MessageEvent<WorkerIn>) => {
     progress('Budowanie osi czasu', 88);
     const frames = buildFrames(rows, sampleTicks);
     if (!frames.ticks.length || !frames.players.length) throw new Error('Demo nie zawiera danych graczy.');
-    const data = assemble(mapName, step, range, rounds, computeKills(events), computeUtils(events), frames);
+    let teamNames: [string, string] = ['', ''];
+    try {
+      const t0 = rounds[0].freezeEndTick + 2 * TICK_RATE;
+      teamNames = computeTeamNames(rowsOf(dp.parseTicks(buf, TEAM_NAME_PROPS, new Int32Array([t0]))).map(flattenRow));
+    } catch {
+      /* clan names are optional */
+    }
+    const data = assemble(mapName, step, range, rounds, computeKills(events), computeUtils(events), frames, teamNames);
 
     // sanity: clamp round ticks into range
     for (const r of data.rounds) r.officialEndTick = Math.min(r.officialEndTick, num(data.lastTick));

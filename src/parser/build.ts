@@ -328,6 +328,91 @@ export function buildFrames(rows: any[], sampleTicks: Int32Array) {
   };
 }
 
+/** Props for the one-off team name lookup (parsed at a single tick). */
+export const TEAM_NAME_PROPS = ['team_num', 'team_clan_name'];
+
+/**
+ * Team names from rows parsed at one tick of the first round:
+ * [team starting as CT, team starting as T]. Empty string when unknown.
+ */
+export function computeTeamNames(rows: any[]): [string, string] {
+  const pick = (team: number): string => {
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      if (teamOf(r.team_num) !== team) continue;
+      const n = str(r.team_clan_name).trim();
+      if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    let best = '';
+    let bestN = 0;
+    for (const [n, c] of counts) if (c > bestN) [best, bestN] = [n, c];
+    return best;
+  };
+  return [pick(3), pick(2)];
+}
+
+/**
+ * Recompute the pre-round score per *team* (by roster), so side swaps at halftime
+ * and in overtime don't mix up the score. scoreT/scoreCT hold the score of the team
+ * currently playing T / CT, like the in-game HUD. Mutates `rounds`.
+ */
+export function applyTeamScores(
+  rounds: RoundInfo[],
+  frames: ReturnType<typeof buildFrames>,
+  teamNames: [string, string] = ['', ''],
+): void {
+  const P = Math.max(frames.players.length, 1);
+  const S = frames.ticks.length;
+  if (!rounds.length || !S || !frames.players.length) return;
+
+  const sampleAt = (tick: number): number => {
+    let lo = 0;
+    let hi = S - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (frames.ticks[mid] < tick) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+
+  let teamA: Set<number> | null = null; // players on CT in the first round with data
+  let sideA = 3; // side currently played by team A
+  let winsA = 0;
+  let winsB = 0;
+  for (const r of rounds) {
+    const si = sampleAt(r.freezeEndTick);
+    let aCT = 0;
+    let aT = 0;
+    const ct: number[] = [];
+    for (let p = 0; p < frames.players.length; p++) {
+      const t = frames.team[si * P + p];
+      if (t === 3) ct.push(p);
+      if (teamA?.has(p)) {
+        if (t === 3) aCT++;
+        else if (t === 2) aT++;
+      }
+    }
+    if (!teamA) {
+      if (ct.length) {
+        teamA = new Set(ct);
+        sideA = 3;
+      }
+    } else if (aCT !== aT) {
+      sideA = aCT > aT ? 3 : 2;
+    }
+    r.scoreCT = sideA === 3 ? winsA : winsB;
+    r.scoreT = sideA === 3 ? winsB : winsA;
+    const [nameA, nameB] = teamNames;
+    r.nameCT = sideA === 3 ? nameA : nameB;
+    r.nameT = sideA === 3 ? nameB : nameA;
+    if (r.winner === 2 || r.winner === 3) {
+      if (r.winner === sideA) winsA++;
+      else winsB++;
+    }
+  }
+}
+
 export function assemble(
   mapName: string,
   sampleStep: number,
@@ -336,7 +421,9 @@ export function assemble(
   kills: KillEvent[],
   utils: UtilEvent[],
   frames: ReturnType<typeof buildFrames>,
+  teamNames: [string, string] = ['', ''],
 ): DemoData {
+  applyTeamScores(rounds, frames, teamNames);
   return {
     mapName,
     tickRate: TICK_RATE,

@@ -28,7 +28,7 @@ export function ScoreBar({
   return (
     <div className="scorebar">
       <div className="score t" style={{ color: TEAM_COLOR[TEAM_T] }}>
-        <span className="side">T</span>
+        <span className="side">{round?.nameT || 'T'}</span>
         <b>{scoreT}</b>
       </div>
       <div className={`clock ${isBomb ? 'bomb' : ''} ${clock.phase}`}>
@@ -49,7 +49,7 @@ export function ScoreBar({
       </div>
       <div className="score ct" style={{ color: TEAM_COLOR[TEAM_CT] }}>
         <b>{scoreCT}</b>
-        <span className="side">CT</span>
+        <span className="side">{round?.nameCT || 'CT'}</span>
       </div>
     </div>
   );
