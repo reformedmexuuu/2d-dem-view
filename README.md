@@ -25,11 +25,6 @@ npm run maps   # pobiera radary map do public/maps (opcjonalne)
 npm run dev
 ```
 
-## Publikacja
-
-Każdy push na `main` buduje stronę i publikuje ją na GitHub Pages (`.github/workflows/deploy.yml`).
-Jednorazowo: **Settings → Pages → Source: GitHub Actions**.
-
 Radary map są pobierane przy budowaniu z [MurkyYT/cs2-map-icons](https://github.com/MurkyYT/cs2-map-icons).
 Jeśli dla mapy nie ma radaru, aplikacja rysuje obrys mapy na podstawie ruchu graczy.
 
