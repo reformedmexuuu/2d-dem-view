@@ -5,3 +5,4 @@ public/maps/*.json
 *.dem
 *.dem.bz2
 .DS_Store
+public/parser/

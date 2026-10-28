@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "vite",
     "maps": "node scripts/fetch-maps.mjs",
+    "parser": "bash scripts/build-parser.sh",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
-    "demoparser2": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -20,7 +20,6 @@
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
     "typescript": "~5.8.3",
-    "vite": "^6.3.5",
-    "vite-plugin-wasm": "^3.4.1"
+    "vite": "^6.3.5"
   }
 }

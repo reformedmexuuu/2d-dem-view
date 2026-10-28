@@ -102,7 +102,7 @@ export interface MapMeta {
   hasLower: boolean;
 }
 
-export type WorkerIn = { type: 'parse'; file: File };
+export type WorkerIn = { type: 'parse'; file: File; parserBase: string };
 
 export type WorkerOut =
   | { type: 'progress'; stage: string; pct: number }

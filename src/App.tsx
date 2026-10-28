@@ -43,7 +43,7 @@ export default function App() {
       }
     };
     w.onerror = (e) => setStatus({ kind: 'error', message: e.message || 'Błąd parsera' });
-    w.postMessage({ type: 'parse', file });
+    w.postMessage({ type: 'parse', file, parserBase: new URL('parser/', document.baseURI).href });
   }, []);
 
   // drag & drop anywhere

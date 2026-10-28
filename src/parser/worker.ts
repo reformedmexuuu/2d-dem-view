@@ -127,29 +127,21 @@ function resolveApi(mod: any): any {
 }
 
 let parserPromise: Promise<any> | null = null;
-function loadParser(): Promise<any> {
+/**
+ * The parser is built from source in CI with wasm-pack `--target no-modules`
+ * (same shape as the npm package): a script that defines a global `wasm_bindgen`
+ * init function carrying the exported parse functions.
+ */
+function loadParser(base: string): Promise<any> {
   if (!parserPromise) {
     parserPromise = (async () => {
-      const mod: any = await import('demoparser2');
-      // "web" target builds need an explicit init call; bundler targets don't
-      for (const initFn of [mod?.default, mod?.init, mod?.__wbg_init]) {
-        if (typeof initFn === 'function' && !/class\s/.test(String(initFn)) && initFn.length <= 1 && !norm(initFn.name || '').includes('parse')) {
-          try {
-            await initFn();
-          } catch {
-            /* already initialised or not needed */
-          }
-          break;
-        }
-      }
-      if (typeof mod.initThreadPool === 'function' && (self as any).crossOriginIsolated) {
-        try {
-          await mod.initThreadPool(Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
-        } catch {
-          /* single thread is fine */
-        }
-      }
-      return resolveApi(mod);
+      const res = await fetch(new URL('demoparser2.js', base));
+      if (!res.ok) throw new Error(`Nie można pobrać parsera (${res.status})`);
+      const src = await res.text();
+      const wb = new Function(`${src}\n;return typeof wasm_bindgen !== 'undefined' ? wasm_bindgen : undefined;`)();
+      if (typeof wb !== 'function') throw new Error('Nieprawidłowy plik parsera');
+      await wb(new URL('demoparser2_bg.wasm', base).href);
+      return resolveApi(wb);
     })().catch((e) => {
       parserPromise = null;
       throw e;
@@ -232,7 +224,7 @@ self.onmessage = async (ev: MessageEvent<WorkerIn>) => {
     if (fmt !== 'cs2') throw new Error('To nie wygląda na demo CS2 (.dem).');
 
     progress('Ładowanie parsera', 6);
-    const dp = await loadParser();
+    const dp = await loadParser(ev.data.parserBase);
 
     progress('Nagłówek', 10);
     let mapName = 'unknown';
