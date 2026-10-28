@@ -15,6 +15,7 @@ jobs:
           enc() { python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read()[:60000], safe=' /:.,;=+-_()[]{}<>\"\'*!?@#\$^&|~\`'))"; }
           sudo apt-get install -y protobuf-compiler >/dev/null
           git clone --depth 1 https://github.com/LaihoE/demoparser /tmp/dp
+          echo "::notice title=time-uses::$(grep -rnE 'Instant|SystemTime|std::time|thread::scope|thread::spawn' /tmp/dp/src/parser/src | head -40 | enc)"
           bash scripts/patch-parser.sh /tmp/dp
           rustup target add wasm32-unknown-unknown
           npm i -g wasm-pack >/dev/null 2>&1

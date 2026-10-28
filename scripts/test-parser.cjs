@@ -13,11 +13,13 @@ wb.initSync(new WebAssembly.Module(fs.readFileSync(pkgDir + '/demoparser2_bg.was
 if (wb.setPanicHook) wb.setPanicHook();
 const buf = new Uint8Array(fs.readFileSync(demoPath));
 const out = [];
-const show = (v) => { try { const s = JSON.stringify(v instanceof Map ? Object.fromEntries(v) : Array.isArray(v) ? v.slice(0, 2).map(x => x instanceof Map ? Object.fromEntries(x) : x) : v, (k, x) => typeof x === 'bigint' ? x.toString() : x); return (Array.isArray(v) ? `array[${v.length}] ` : typeof v + ' ') + (s || '').slice(0, 700); } catch (e) { return 'show-err ' + e.message; } };
+const show = (v) => { try { const s = JSON.stringify((v && v.constructor && v.constructor.name === 'Map') ? Object.fromEntries(v) : Array.isArray(v) ? v.slice(0, 2).map(x => (x && x.constructor && x.constructor.name === 'Map') ? Object.fromEntries(x) : x) : v, (k, x) => typeof x === 'bigint' ? x.toString() : x); return (Array.isArray(v) ? `array[${v.length}] ` : typeof v + ' ') + (s || '').slice(0, 700); } catch (e) { return 'show-err ' + e.message; } };
 const run = (label, fn) => { const t = Date.now(); logs.length = 0; try { const r = fn(); out.push(`${label} OK ${Date.now() - t}ms: ${show(r)}`); } catch (e) { out.push(`${label} FAIL ${Date.now() - t}ms: ${e && e.message} | ${logs.join(' / ').slice(0, 1500)}`); } };
 out.push(`demo ${demoPath} ${buf.length} bytes`);
 run('parseHeader', () => wb.parseHeader(buf));
 run('parseEvent round_end', () => wb.parseEvent(buf, 'round_end', [], ['total_rounds_played']));
 run('parseEvents', () => wb.parseEvents(buf, ['round_start', 'round_end', 'player_death'], ['X', 'Y'], ['total_rounds_played', 'is_warmup_period']));
-run('parseTicks', () => wb.parseTicks(buf, ['X', 'Y', 'health', 'team_num'], new Int32Array([1000, 2000, 3000])));
+run('parseEvents full', () => wb.parseEvents(buf, ['round_start','round_freeze_end','round_end','round_officially_ended','bomb_planted','bomb_defused','bomb_exploded','player_death','smokegrenade_detonate','smokegrenade_expired','inferno_startburn','inferno_expire','hegrenade_detonate','flashbang_detonate'], ['X','Y','Z','team_num'], ['total_rounds_played','is_warmup_period']));
+run('parseTicks', () => wb.parseTicks(buf, ['X', 'Y', 'Z', 'yaw', 'health', 'armor_value', 'is_alive', 'team_num', 'balance', 'active_weapon_name', 'has_helmet', 'has_defuser'], new Int32Array([1000, 2000, 3000])));
+run('parseTicks many', () => { const w = new Int32Array(20000); for (let i = 0; i < w.length; i++) w[i] = i * 4; const r = wb.parseTicks(buf, ['X', 'Y', 'Z', 'yaw', 'health', 'team_num'], w); return Array.isArray(r) ? r.length : r; });
 console.log(out.join('\n'));

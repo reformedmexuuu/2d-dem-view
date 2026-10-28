@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
-# Adds an exported setPanicHook() to the demoparser2 wasm crate so Rust panics
-# are reported through console.error instead of an opaque "unreachable".
+# Patches the demoparser2 sources so the wasm build works in browsers:
+#  1. std::time (Instant/SystemTime) panics on wasm32 -> use the web-time drop-in crate.
+#  2. Adds setPanicHook() so Rust panics are reported instead of an opaque "unreachable".
 set -e
-LIB="$1/src/wasm/src/lib.rs"
-grep -q setPanicHook "$LIB" && exit 0
+DP="$1"
+PARSER="$DP/src/parser"
+
+# 1. web-time instead of std::time
+files=$(grep -rlE 'std::time' "$PARSER/src" || true)
+if [ -n "$files" ]; then
+  echo "Patching std::time in:"; echo "$files"
+  sed -i -E 's/std::time::/web_time::/g' $files
+  if ! grep -q '^web-time' "$PARSER/Cargo.toml"; then
+    sed -i -E '0,/^\[dependencies\]/s//[dependencies]\nweb-time = "1"/' "$PARSER/Cargo.toml"
+  fi
+fi
+
+# 2. panic hook
+LIB="$DP/src/wasm/src/lib.rs"
+if ! grep -q setPanicHook "$LIB"; then
 cat >> "$LIB" <<'RS'
 
 #[wasm_bindgen]
@@ -13,3 +28,4 @@ pub fn setPanicHook() {
     }));
 }
 RS
+fi
