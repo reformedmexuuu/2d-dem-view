@@ -1,0 +1,18 @@
+name: Inspect demoparser2
+on:
+  push:
+    branches: [inspect-parser]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: inspect source
+        run: |
+          enc() { python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read()[:60000], safe=' /:.,;=+-_()[]{}<>\"\'*!?@#\$^&|~\`'))"; }
+          git clone --filter=blob:none https://github.com/LaihoE/demoparser dp && cd dp
+          echo "::notice title=threads::$(grep -rnE 'thread::spawn|rayon|par_iter|thread::scope|std::thread|available_parallelism|target_arch *= *\"wasm32\"|cfg\(.*wasm' src/parser/src | head -60 | enc)"
+          echo "::notice title=wasm-log::$(git log --format='%h %cd %s' --date=short -15 -- src/wasm | enc)"
+          echo "::notice title=parser-log::$(git log --format='%h %cd %s' --date=short -25 -- src/parser | enc)"
+          echo "::notice title=wasm-lib::$(sed -n '1,140p' src/wasm/src/lib.rs | enc)"
+          echo "::notice title=dem-files::$(find . -name '*.dem*' | head -20 | enc)"
+          echo "::notice title=tags::$(git tag --sort=-creatordate | head -15 | enc)"
