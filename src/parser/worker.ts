@@ -53,23 +53,107 @@ function rowsOf(v: any): any[] {
   return [];
 }
 
+const norm = (s: string) => s.toLowerCase().replace(/[_\-]/g, '');
+
+function ownKeys(o: any): string[] {
+  if (!o) return [];
+  const keys = new Set<string>();
+  try {
+    Object.getOwnPropertyNames(o).forEach((k) => keys.add(k));
+  } catch {
+    /* ignore */
+  }
+  let p = typeof o === 'object' ? Object.getPrototypeOf(o) : null;
+  while (p && p !== Object.prototype) {
+    Object.getOwnPropertyNames(p).forEach((k) => keys.add(k));
+    p = Object.getPrototypeOf(p);
+  }
+  keys.delete('constructor');
+  return [...keys];
+}
+
+/**
+ * The wasm build of demoparser2 can expose its functions in different shapes
+ * (named exports, default export object, snake_case names, or a DemoParser class).
+ * Normalise all of them into { parseHeader, parseEvent, parseEvents, parseTicks }.
+ */
+function resolveApi(mod: any): any {
+  const roots = [mod, mod?.default, mod?.default?.default].filter((r) => r && (typeof r === 'object' || typeof r === 'function'));
+  const found: Record<string, (...a: any[]) => any> = {};
+  const pick = (holder: any, bindTo: any, wrap?: (name: string) => (...a: any[]) => any) => {
+    for (const k of ownKeys(holder)) {
+      let v: any;
+      try {
+        v = holder[k];
+      } catch {
+        continue;
+      }
+      if (typeof v !== 'function') continue;
+      const n = norm(k);
+      const key =
+        n === 'parseticks' ? 'parseTicks' : n === 'parseevents' ? 'parseEvents' : n === 'parseevent' ? 'parseEvent' : n === 'parseheader' ? 'parseHeader' : '';
+      if (key && !found[key]) found[key] = wrap ? wrap(k) : v.bind(bindTo);
+    }
+  };
+  for (const r of roots) pick(r, r);
+  if (!found.parseTicks) {
+    // class-based API: new DemoParser(bytes).parseTicks(...)
+    for (const r of roots) {
+      for (const k of ownKeys(r)) {
+        if (norm(k) !== 'demoparser') continue;
+        const Cls = r[k];
+        if (typeof Cls !== 'function') continue;
+        const protoNames = ownKeys(Cls.prototype);
+        const has = (name: string) => protoNames.find((p) => norm(p) === norm(name));
+        const mk = (name: string) => (buf: Uint8Array, ...rest: any[]) => {
+          const inst = new Cls(buf);
+          try {
+            return inst[has(name)!](...rest);
+          } finally {
+            inst.free?.();
+          }
+        };
+        for (const [key, name] of [['parseTicks', 'parseTicks'], ['parseEvents', 'parseEvents'], ['parseEvent', 'parseEvent'], ['parseHeader', 'parseHeader']] as const) {
+          if (has(name)) found[key] = mk(name);
+        }
+      }
+    }
+  }
+  if (!found.parseTicks) {
+    const exportsList = roots.flatMap((r) => ownKeys(r)).filter((k, i, a) => a.indexOf(k) === i);
+    throw new Error(`Parser demoparser2 ma inne API niż oczekiwano. Eksporty: ${exportsList.join(', ') || '(brak)'}`);
+  }
+  return found;
+}
+
 let parserPromise: Promise<any> | null = null;
 function loadParser(): Promise<any> {
   if (!parserPromise) {
     parserPromise = (async () => {
       const mod: any = await import('demoparser2');
-      const api = mod.parseTicks ? mod : mod.default && mod.default.parseTicks ? mod.default : mod;
-      if (typeof mod.default === 'function' && mod.parseTicks) await mod.default();
-      if (typeof api.initThreadPool === 'function' && (self as any).crossOriginIsolated) {
+      // "web" target builds need an explicit init call; bundler targets don't
+      for (const initFn of [mod?.default, mod?.init, mod?.__wbg_init]) {
+        if (typeof initFn === 'function' && !/class\s/.test(String(initFn)) && initFn.length <= 1 && !norm(initFn.name || '').includes('parse')) {
+          try {
+            await initFn();
+          } catch {
+            /* already initialised or not needed */
+          }
+          break;
+        }
+      }
+      if (typeof mod.initThreadPool === 'function' && (self as any).crossOriginIsolated) {
         try {
-          await api.initThreadPool(Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
+          await mod.initThreadPool(Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
         } catch {
           /* single thread is fine */
         }
       }
-      if (typeof api.parseTicks !== 'function') throw new Error('Parser demoparser2 nie udostępnia parseTicks');
-      return api;
-    })();
+      return resolveApi(mod);
+    })().catch((e) => {
+      parserPromise = null;
+      throw e;
+    });
   }
   return parserPromise;
 }
