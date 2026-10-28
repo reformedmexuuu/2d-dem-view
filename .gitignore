@@ -1,0 +1,7 @@
+node_modules
+dist
+public/maps/*.png
+public/maps/*.json
+*.dem
+*.dem.bz2
+.DS_Store
