@@ -9,7 +9,7 @@ ctx.globalThis = ctx; ctx.self = ctx;
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(pkgDir + '/demoparser2.js', 'utf8') + '\n;globalThis.wb = wasm_bindgen;', ctx);
 const wb = ctx.wb;
-wb.initSync({ module: fs.readFileSync(pkgDir + '/demoparser2_bg.wasm') });
+wb.initSync(new WebAssembly.Module(fs.readFileSync(pkgDir + '/demoparser2_bg.wasm')));
 if (wb.setPanicHook) wb.setPanicHook();
 const buf = new Uint8Array(fs.readFileSync(demoPath));
 const out = [];
