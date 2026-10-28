@@ -6,13 +6,17 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: inspect source
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: build + test
         run: |
           enc() { python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read()[:60000], safe=' /:.,;=+-_()[]{}<>\"\'*!?@#\$^&|~\`'))"; }
-          git clone --filter=blob:none https://github.com/LaihoE/demoparser dp && cd dp
-          echo "::notice title=threads::$(grep -rnE 'thread::spawn|rayon|par_iter|thread::scope|std::thread|available_parallelism|target_arch *= *\"wasm32\"|cfg\(.*wasm' src/parser/src | head -60 | enc)"
-          echo "::notice title=wasm-log::$(git log --format='%h %cd %s' --date=short -15 -- src/wasm | enc)"
-          echo "::notice title=parser-log::$(git log --format='%h %cd %s' --date=short -25 -- src/parser | enc)"
-          echo "::notice title=wasm-lib::$(sed -n '1,140p' src/wasm/src/lib.rs | enc)"
-          echo "::notice title=dem-files::$(find . -name '*.dem*' | head -20 | enc)"
-          echo "::notice title=tags::$(git tag --sort=-creatordate | head -15 | enc)"
+          sudo apt-get install -y protobuf-compiler >/dev/null
+          git clone --depth 1 https://github.com/LaihoE/demoparser /tmp/dp
+          bash scripts/patch-parser.sh /tmp/dp
+          rustup target add wasm32-unknown-unknown
+          npm i -g wasm-pack >/dev/null 2>&1
+          (cd /tmp/dp/src/wasm && wasm-pack build --release --target no-modules --out-dir /tmp/pkg > /tmp/b.log 2>&1) || echo "::notice title=build-fail::$(tail -c 4000 /tmp/b.log | enc)"
+          echo "::notice title=test-head::$(node scripts/test-parser.cjs /tmp/pkg /tmp/dp/src/parser/test_demo.dem 2>&1 | enc)"
