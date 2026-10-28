@@ -117,6 +117,9 @@ code {
   border: 1px solid rgba(255, 59, 48, 0.4);
   color: #ffb4ae;
   font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
 }
 .parsing .fname {
   font-weight: 600;

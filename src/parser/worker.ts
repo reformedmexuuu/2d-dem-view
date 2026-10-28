@@ -154,23 +154,76 @@ const post = (m: WorkerOut, transfer: Transferable[] = []) => self.postMessage(m
 const progress = (stage: string, pct: number) => post({ type: 'progress', stage, pct });
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+const VARIANT_KEY = /^[A-Z][A-Za-z0-9]*$/;
+/** serde externally-tagged enums arrive as {"I32": 5}; unwrap them. */
+function unwrap(v: any): any {
+  if (v && typeof v === 'object' && !Array.isArray(v) && !ArrayBuffer.isView(v)) {
+    const ks = Object.keys(v);
+    if (ks.length === 1 && VARIANT_KEY.test(ks[0])) return unwrap(v[ks[0]]);
+  }
+  return v;
+}
+
+/** Flatten {name, tick, fields:[{name,data}]} style events and unwrap values. */
+function flattenRow(r: any): any {
+  if (!r || typeof r !== 'object') return r;
+  const out: Record<string, any> = {};
+  if (Array.isArray(r.fields)) {
+    for (const f of r.fields) if (f && f.name !== undefined) out[String(f.name)] = unwrap(f.data ?? f.value);
+    if (r.name !== undefined) out.event_name = unwrap(r.name);
+  }
+  for (const [k, v] of Object.entries(r)) if (k !== 'fields' && !(k in out)) out[k] = unwrap(v);
+  return out;
+}
+
+/** Normalise any parseEvent(s) output into a flat list of event rows. */
+function eventsOf(v: any, nameHint?: string): any[] {
+  const p = plain(v);
+  let rows: any[];
+  if (Array.isArray(p)) rows = p;
+  else if (p && typeof p === 'object') {
+    const keys = Object.keys(p);
+    const byEvent = keys.length > 0 && keys.every((k) => EVENT_NAMES.includes(k) || Array.isArray(p[k]) && p[k].every((x: any) => x && typeof x === 'object'));
+    if (byEvent && keys.some((k) => EVENT_NAMES.includes(k))) {
+      rows = keys.flatMap((k) => (p[k] ?? []).map((e: any) => ({ ...e, event_name: e?.event_name ?? k })));
+    } else rows = rowsOf(p);
+  } else rows = [];
+  return rows.map(flattenRow).map((e) => (nameHint && e && e.event_name === undefined ? { ...e, event_name: nameHint } : e));
+}
+
+const diag: string[] = [];
+const describe = (label: string, v: any) => {
+  try {
+    const p = plain(v);
+    const kind = Array.isArray(p) ? `array[${p.length}]` : p === null ? 'null' : typeof p === 'object' ? `object{${Object.keys(p).slice(0, 8).join(',')}}` : typeof p;
+    const sample = JSON.stringify(Array.isArray(p) ? p[0] : p, (_k, x) => (typeof x === 'bigint' ? x.toString() : x))?.slice(0, 260);
+    diag.push(`${label}: ${kind} ${sample ?? ''}`);
+  } catch (e) {
+    diag.push(`${label}: ${errMsg(e)}`);
+  }
+};
+
 function parseAllEvents(dp: any, buf: Uint8Array): Events {
   const grouped: Events = {};
   for (const n of EVENT_NAMES) grouped[n] = [];
+  const add = (rows: any[]) => {
+    for (const e of rows) {
+      const name = e?.event_name ?? e?.name;
+      if (name && grouped[name]) grouped[name].push(e);
+    }
+  };
   if (typeof dp.parseEvents === 'function') {
     for (const [pp, op] of [
       [EVENT_PLAYER_PROPS, EVENT_OTHER_PROPS],
       [[], []],
     ]) {
       try {
-        const all = rowsOf(dp.parseEvents(buf, EVENT_NAMES, pp, op));
-        for (const e of all) {
-          const name = e.event_name ?? e.name;
-          if (name && grouped[name]) grouped[name].push(e);
-        }
-        return grouped;
-      } catch {
-        /* try next */
+        const raw = dp.parseEvents(buf, EVENT_NAMES, pp, op);
+        describe('parseEvents', raw);
+        add(eventsOf(raw));
+        if (Object.values(grouped).some((l) => l.length)) return grouped;
+      } catch (e) {
+        diag.push(`parseEvents(${pp.length ? 'props' : 'bez props'}): ${errMsg(e)}`);
       }
     }
   }
@@ -181,10 +234,12 @@ function parseAllEvents(dp: any, buf: Uint8Array): Events {
       [[], []],
     ]) {
       try {
-        grouped[name] = rowsOf(dp.parseEvent(buf, name, pp, op));
+        const raw = dp.parseEvent(buf, name, pp, op);
+        if (name === 'round_end' || name === 'round_start') describe(`parseEvent ${name}`, raw);
+        grouped[name] = eventsOf(raw, name).map((e) => ({ ...e, event_name: name }));
         break;
-      } catch {
-        /* event may not exist in this demo */
+      } catch (e) {
+        if (name === 'round_end') diag.push(`parseEvent ${name}: ${errMsg(e)}`);
       }
     }
   });
@@ -195,7 +250,7 @@ function parseTicksWithFallback(dp: any, buf: Uint8Array, wanted: Int32Array): a
   let last: unknown;
   for (const props of TICK_PROP_SETS) {
     try {
-      return rowsOf(dp.parseTicks(buf, props, wanted));
+      return rowsOf(dp.parseTicks(buf, props, wanted)).map(flattenRow);
     } catch (e) {
       last = e;
     }
@@ -241,7 +296,10 @@ self.onmessage = async (ev: MessageEvent<WorkerIn>) => {
     const prelimRange = computeRange(events, []);
     const rounds = computeRounds(events, prelimRange.last);
     const range = computeRange(events, rounds);
-    if (range.last - range.first < 64) throw new Error('Nie znaleziono rund w tym demie.');
+    if (range.last - range.first < 64) {
+      const counts = Object.entries(events).map(([k, l]) => `${k}=${l.length}`).join(' ');
+      throw new Error(`Nie znaleziono rund w tym demie.\n[diagnostyka] ${counts}\n${diag.join('\n')}`);
+    }
 
     const lowMem = ((navigator as any).deviceMemory ?? 8) <= 4;
     const span = range.last - range.first;
