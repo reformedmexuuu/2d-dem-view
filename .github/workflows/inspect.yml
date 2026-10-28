@@ -10,14 +10,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: build + test
+      - run: npm install --no-audit --no-fund
+      - name: build parser
         run: |
           enc() { python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.read()[:60000], safe=' /:.,;=+-_()[]{}<>\"\'*!?@#\$^&|~\`'))"; }
           sudo apt-get install -y protobuf-compiler >/dev/null
-          git clone --depth 1 https://github.com/LaihoE/demoparser /tmp/dp
-          echo "::notice title=time-uses::$(grep -rnE 'Instant|SystemTime|std::time|thread::scope|thread::spawn' /tmp/dp/src/parser/src | head -40 | enc)"
-          bash scripts/patch-parser.sh /tmp/dp
-          rustup target add wasm32-unknown-unknown
-          npm i -g wasm-pack >/dev/null 2>&1
-          (cd /tmp/dp/src/wasm && wasm-pack build --release --target no-modules --out-dir /tmp/pkg > /tmp/b.log 2>&1) || echo "::notice title=build-fail::$(tail -c 4000 /tmp/b.log | enc)"
-          echo "::notice title=test-head::$(node scripts/test-parser.cjs /tmp/pkg /tmp/dp/src/parser/test_demo.dem 2>&1 | enc)"
+          npm run parser > /tmp/p.log 2>&1; code=$?
+          echo "::notice title=parser-build::exit=$code $(grep -E 'demoparser commit|Patching|rounds|PIPELINE|Parser:|warning|error' /tmp/p.log | tail -30 | enc)"
+          echo "::notice title=origin::$(cat public/parser/origin.txt)"

@@ -141,6 +141,11 @@ function loadParser(base: string): Promise<any> {
       const wb = new Function(`${src}\n;return typeof wasm_bindgen !== 'undefined' ? wasm_bindgen : undefined;`)();
       if (typeof wb !== 'function') throw new Error('Nieprawidłowy plik parsera');
       await wb(new URL('demoparser2_bg.wasm', base).href);
+      try {
+        wb.setPanicHook?.();
+      } catch {
+        /* older parser builds have no hook */
+      }
       return resolveApi(wb);
     })().catch((e) => {
       parserPromise = null;
@@ -152,7 +157,18 @@ function loadParser(base: string): Promise<any> {
 
 const post = (m: WorkerOut, transfer: Transferable[] = []) => self.postMessage(m, transfer);
 const progress = (stage: string, pct: number) => post({ type: 'progress', stage, pct });
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// Rust panics are reported via console.error("PANIC: ...") by the patched parser
+let lastPanic = '';
+const origError = console.error.bind(console);
+console.error = (...a: unknown[]) => {
+  const m = a.map(String).join(' ');
+  if (m.startsWith('PANIC:')) lastPanic = m.slice(6).trim().split('\n')[0];
+  origError(...a);
+};
+const errMsg = (e: unknown) => {
+  const m = e instanceof Error ? e.message : String(e);
+  return m === 'unreachable' && lastPanic ? `błąd parsera: ${lastPanic}` : m;
+};
 
 const VARIANT_KEY = /^[A-Z][A-Za-z0-9]*$/;
 /** serde externally-tagged enums arrive as {"I32": 5}; unwrap them. */
