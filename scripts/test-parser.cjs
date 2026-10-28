@@ -4,7 +4,7 @@ const vm = require('vm');
 const [, , pkgDir, demoPath] = process.argv;
 const logs = [];
 const cons = { log: (...a) => logs.push('log ' + a.join(' ')), warn: (...a) => logs.push('warn ' + a.join(' ')), error: (...a) => logs.push('err ' + a.join(' ')) };
-const ctx = { console: cons, TextEncoder, TextDecoder, WebAssembly, URL, crypto: globalThis.crypto, location: { href: 'file:///x.js' } };
+const ctx = { console: cons, TextEncoder, TextDecoder, WebAssembly, URL, crypto: globalThis.crypto, performance: globalThis.performance, location: { href: 'file:///x.js' } };
 ctx.globalThis = ctx; ctx.self = ctx;
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(pkgDir + '/demoparser2.js', 'utf8') + '\n;globalThis.wb = wasm_bindgen;', ctx);
